@@ -3,11 +3,14 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	_ "github.com/google/go-querystring/query"
-	_ "io"
+	"io"
 	"log"
-	_ "net/http"
+	"net/http"
 	"os"
+	"os/exec"
+	"strings"
+
+	"github.com/google/go-querystring/query"
 )
 
 // Query is the main search string entered, such as "forest"
@@ -17,12 +20,14 @@ type Params struct {
 	Query      string `url:"q"`
 	Resolution string `url:"resolutions"`
 	Sorting    string `url:"sorting"`
+	Page       int    `url:"page"`
 }
 
 // Image contains identifying data and metadatas
 // about the image, such as: id, url, views, favorites, dimension, file_size, colors, etc.
 // TODO Fill out, we just don't need to yet
 type Image struct {
+	Id   string `json:"id"`
 	Path string `json:"path"`
 }
 
@@ -46,20 +51,28 @@ type Response struct {
 func main() {
 	const BaseURL string = "https://wallhaven.cc/api/v1/search?"
 
-	//params := Params{Query: "forest", Resolution: "1920x1080", Sorting: "random"}
-	//v, _ := query.Values(params)
+	if len(os.Args) <= 1 {
+		log.Fatal("Need somethin to search for!")
+	}
 
-	// resp, err := http.Get(BaseURL + v.Encode())
-	// if err != nil {
-	// 	log.Fatalf("Failed to read URL: %v", BaseURL)
-	// }
-	// defer resp.Body.Close()
+	tags := strings.Join(os.Args[1:], " ")
+	fmt.Printf("Searching for... %v", tags)
+
+	params := Params{Query: tags, Resolution: "1920x1080", Sorting: "random", Page: 1}
+	v, _ := query.Values(params)
+
+	resp, err := http.Get(BaseURL + v.Encode())
+	if err != nil {
+		log.Fatalf("Failed to read URL: %v", BaseURL)
+	}
+	defer resp.Body.Close()
 
 	// TODO To avoid spamming wallhaven we just save the json blob
 	// into a local file for testing since the interface should be
 	// a reader/writer anyways, so we should be able to read both ez.
-	// images, err := io.ReadAll(resp.Body)
-	blob, err := os.ReadFile("blob")
+	//blob, err := os.ReadFile("/tmp/blob")
+	var blob []byte
+	blob, err = io.ReadAll(resp.Body)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -73,4 +86,29 @@ func main() {
 	for _, image := range r.Data {
 		fmt.Println(image.Path)
 	}
+
+	// Fetch an image...
+	res, err := http.Get(r.Data[1].Path)
+	if err != nil {
+		log.Fatalf("Failed to download image! %v ", err)
+	}
+	defer res.Body.Close()
+
+	// Save temporarily...
+	n := strings.Split(r.Data[1].Path, "/")
+	imgpath := fmt.Sprintf("/tmp/%v", n[len(n)-1])
+	tmpfile, err := os.Create(imgpath)
+	_, err = io.Copy(tmpfile, res.Body)
+	if err != nil {
+		log.Fatalf("Failed to save image! %v", err)
+	}
+	tmpfile.Close()
+
+	// Finally, use $somecmd to set the background
+	ags := []string{"--bg-fill", imgpath}
+	bgset := exec.Command("feh", ags...)
+	if err := bgset.Run(); err != nil {
+		log.Fatal("Fucked up while tryna set the background")
+	}
+
 }
