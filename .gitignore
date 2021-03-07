@@ -4,7 +4,14 @@
 *.dll
 *.so
 *.dylib
+
+# Chuck accidental binaries
+papes
 main
+
+# Dont accidentall save pictures up
+*.jpg
+*.png
 
 # Test binary, built with `go test -c`
 *.test
